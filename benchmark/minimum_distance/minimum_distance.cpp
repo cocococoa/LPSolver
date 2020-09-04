@@ -4,6 +4,7 @@
 #include <iostream>
 #include <map>
 #include <numeric>
+#include <ortools/linear_solver/linear_solver.h>
 #include <queue>
 #include <string>
 #include <vector>
@@ -143,6 +144,42 @@ solver::LPSolver minimumDistance(const Graph& g, NodeIdx s, NodeIdx t)
     return solver::LPSolver(n, m + 1, mat.data(), obj.data(), con.data(), zero);
 }
 
+Distance orTools(const Graph& g, NodeIdx s, NodeIdx t)
+{
+    using namespace operations_research;
+    MPSolver solver("Find miniumu distance", MPSolver::GLOP_LINEAR_PROGRAMMING);
+    const double infinity = solver.infinity();
+    // make vars
+    std::vector<MPVariable*> vars;
+    vars.reserve(g.nodes);
+    for (NodeIdx i = 0; i < g.nodes; ++i) {
+        if (i == s) {
+            MPVariable* const v = solver.MakeNumVar(0.0, 0.0, "v" + std::to_string(i));
+            vars.emplace_back(v);
+        } else {
+            MPVariable* const v = solver.MakeNumVar(0.0, infinity, "v" + std::to_string(i));
+            vars.emplace_back(v);
+        }
+    }
+    // make constraints
+    for (NodeIdx i = 0; i < g.nodes; ++i) {
+        for (const auto& [to, dist] : g.edges[i]) {
+            MPConstraint* const c = solver.MakeRowConstraint(-infinity, dist);
+            c->SetCoefficient(vars[i], -1.0);
+            c->SetCoefficient(vars[to], 1.0);
+        }
+    }
+    // make objective function
+    MPObjective* const objective = solver.MutableObjective();
+    objective->SetMaximization();
+    objective->SetCoefficient(vars[t], 1.0);
+
+    const auto result_status = solver.Solve();
+    if (result_status != MPSolver::OPTIMAL) { LOG(INFO) << "The problem does not have an optimal solution"; }
+
+    return static_cast<Distance>(objective->Value());
+}
+
 int main(int argc, char** argv)
 {
     if (argc < 3) {
@@ -173,34 +210,43 @@ int main(int argc, char** argv)
         answers.emplace_back(distance);
 
         for (std::size_t i = 0; i < route.size(); ++i) {
-            std::cerr << g.idx2id[route[i]];
+            std::cout << g.idx2id[route[i]];
             if (i + 1 == route.size())
                 std::cout << std::endl;
             else
                 std::cout << "-->";
         }
     }
-    std::cerr << "Finish Dijkstra" << std::endl;
+    std::cout << "Finish Dijkstra" << std::endl;
 
-    std::cerr << "Start Simplex" << std::endl;
+    std::cout << "Start Simplex" << std::endl;
     using Time = std::chrono::duration<float, std::milli>;
     for (int i = 0; i < count; i++) {
+        std::cout << "-----------------" << std::endl;
         const auto start = std::chrono::high_resolution_clock::now();
         const auto from = (i * 128) % g.nodes;
         const auto to = 1;
         auto solver = minimumDistance(g, from, to);
         const auto middle = std::chrono::high_resolution_clock::now();
         const auto construct = std::chrono::duration_cast<Time>(middle - start);
-        std::cerr << "Construct: " << construct.count() << " [msec]" << std::endl;
+        std::cout << "Construct: " << construct.count() << " [msec]" << std::endl;
         solver.solve(std::chrono::milliseconds(100'000));
         const auto end = std::chrono::high_resolution_clock::now();
         const auto solve = std::chrono::duration_cast<Time>(end - middle);
-        std::cerr << "Solve    : " << solve.count() << " [msec]" << std::endl;
-        std::cerr << "Distance : " << solver.value().x << std::endl;
+        std::cout << "Solve    : " << solve.count() << " [msec]" << std::endl;
+
+        const auto or_tools_start = std::chrono::high_resolution_clock::now();
+        const auto or_distance = orTools(g, from, to);
+        const auto or_tools_end = std::chrono::high_resolution_clock::now();
+        const auto or_tools = std::chrono::duration_cast<Time>(or_tools_end - or_tools_start);
+        std::cout << "OR-TOOLS : " << or_tools.count() << " [msec]" << std::endl;
 
         // check answer
         const auto value = solver.value();
-        if (answers[i] != value.x) std::cerr << "ERROR!!!!!!" << std::endl;
+        if (answers[i] != value.x) std::cerr << "[SIMPLEX] ERROR!!!!!!" << std::endl;
+        if (answers[i] != or_distance) std::cerr << "[ORTOOLS] ERROR!!!!!!" << std::endl;
     }
-    std::cerr << "Finish Simplex Method" << std::endl;
+    std::cout << "Finish Simplex Method" << std::endl;
+
+    return 0;
 }
