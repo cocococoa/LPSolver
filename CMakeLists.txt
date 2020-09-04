@@ -1,0 +1,17 @@
+cmake_minimum_required(VERSION 3.10.0 FATAL_ERROR)
+project(gpu_lpsolver)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_definitions(-DNDEBUG)
+endif()
+set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g3 -fno-omit-frame-pointer")
+set(CMAKE_CXX_FLAGS_RELEASE "-O2")
+set(CMAKE_CXX_FLAGS "-Wall -Wextra")
+
+add_subdirectory(lpsolver)
+enable_testing()
+# add_subdirectory(test)
+add_subdirectory(benchmark)
